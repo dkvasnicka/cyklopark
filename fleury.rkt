@@ -1,8 +1,6 @@
 #lang racket
 
-(require graph
-         pfds/heap/leftist
-         racket/match)
+(require graph)
 (provide color)
 
 (define *edges*
@@ -31,26 +29,24 @@
     (remove-edge! new-graph u v)
     new-graph))
 
-(struct step (vertex graph ccs))
-
-(define/match (candidate-comparator x y)
-  [((step _ _ xcs) (step _ _ ycs)) (< (length xcs) (length ycs))])
+(struct step (vertex graph ccs) #:transparent)
 
 (define (make-step G start v)
   (let ([without-edge (remove-edge G start v)])
-    (step v without-edge (cc without-edge))))
+    (step v without-edge (length (cc without-edge)))))
 
-(define (edge-candidates G start)
-  (for/fold ([acc (heap candidate-comparator)])
-            ([s (sequence-map (curry make-step G start) (in-neighbors G start))]
-             #:final (= 1 (length (step-ccs s))))
-    (insert s acc)))
+(define (next-edge G start cc-count)
+  (let ([potential-steps (stream-map (curry make-step G start)
+                                     (sequence->stream (in-neighbors G start)))])
+    (or (for/first ([s potential-steps] #:when (= cc-count (step-ccs s)))
+          s)
+        (stream-first potential-steps))))
 
-(define (traverse G start)
-  (if (zero? (length (get-edges G)))
+(define (traverse stp)
+  (if (zero? (length (get-edges (step-graph stp))))
       '()
-      (let ([next (find-min/max (edge-candidates G start))])
-        (cons (list start (step-vertex next))
-              (traverse (step-graph next) (step-vertex next))))))
+      (let ([next (next-edge (step-graph stp) (step-vertex stp) (step-ccs stp))])
+        (cons (list (step-vertex stp) (step-vertex next))
+              (traverse next)))))
 
-(traverse *g* 'c)
+(traverse (step 'c *g* 1))
